@@ -1,0 +1,91 @@
+name: CI/CD MLflow
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  train-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING: false
+      MLFLOW_AUTOLOG_INPUT_DATASETS: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        token: ${{ secrets.PAT_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.12.7
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run MLflow Project
+      run: |
+        mlflow run MLProject --env-manager=local
+
+    - name: Get latest MLflow run_id
+      id: get_run_id
+      run: |
+        RUN_ID=$(ls -td mlruns/0/*/ 2>/dev/null | head -n 1 | cut -d'/' -f3 || echo "none")
+        echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+        echo "Latest run_id: $RUN_ID"
+
+    - name: Install Git LFS
+      run: |
+        sudo apt-get update
+        sudo apt-get install git-lfs -y
+        git lfs install
+
+    - name: Track and commit model to LFS branch
+      if: ${{ steps.get_run_id.outputs.run_id != 'none' }}
+      run: |
+        mkdir -p model_artifacts
+        cp -r mlruns/0/${{ steps.get_run_id.outputs.run_id }}/artifacts/model model_artifacts/
+
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        
+        git checkout -b lfs-model-${{ steps.get_run_id.outputs.run_id }}
+        git lfs track "model_artifacts/**"
+        echo "*.pb" >> .gitattributes
+        echo "*.pkl" >> .gitattributes
+        git add .gitattributes
+        git add -f model_artifacts/
+        git commit -m "Track model with Git LFS - run ${{ steps.get_run_id.outputs.run_id }}"
+        git push origin lfs-model-${{ steps.get_run_id.outputs.run_id }}
+
+    - name: Build Docker Model
+      if: ${{ steps.get_run_id.outputs.run_id != 'none' }}
+      run: |
+        mlflow models build-docker \
+          --model-uri runs:/${{ steps.get_run_id.outputs.run_id }}/model \
+          --name energy-model
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+    - name: Tag Docker Image
+      if: ${{ steps.get_run_id.outputs.run_id != 'none' }}
+      run: |
+        docker tag energy-model ${{ secrets.DOCKER_HUB_USERNAME }}/energy-efficiency:latest
+
+    - name: Push Docker Image
+      if: ${{ steps.get_run_id.outputs.run_id != 'none' }}
+      run: |
+        docker push ${{ secrets.DOCKER_HUB_USERNAME }}/energy-efficiency:latest
+
+    - name: Job Complete
+      run: echo "CI/CD job complete. Model pushed to Git LFS branch."

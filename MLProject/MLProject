@@ -1,0 +1,9 @@
+name: energy-efficiency
+
+conda_env: conda.yaml
+
+entry_points:
+  main:
+    parameters:
+      run_name_suffix: {type: str, default: "modelling"}
+    command: "python modelling.py"
