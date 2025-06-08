@@ -50,7 +50,7 @@ jobs:
       if: ${{ steps.get_run_id.outputs.run_id != 'none' }}
       run: |
         mkdir -p model_artifacts
-        cp -r mlruns/0/${{ steps.get_run_id.outputs.run_id }}/artifacts/model model_artifacts/
+        cp -r mlruns/0/${{ steps.get_run_id.outputs.run_id }}/artifacts/model mlruns/
 
         git config user.name "github-actions"
         git config user.email "github-actions@github.com"
