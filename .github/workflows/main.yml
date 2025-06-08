@@ -14,15 +14,23 @@ jobs:
       MLFLOW_AUTOLOG_INPUT_DATASETS: false
 
     steps:
-    - name: Checkout code
+    - name: Set up job
+      run: echo "Starting CI/CD job"
+
+    - name: Run actions/checkout@v3
       uses: actions/checkout@v3
       with:
         token: ${{ secrets.PAT_TOKEN }}
 
-    - name: Set up Python
+    - name: Set up Python 3.12.7
       uses: actions/setup-python@v4
       with:
         python-version: 3.12.7
+
+    - name: Check Env
+      run: |
+        python --version
+        pip --version
 
     - name: Install dependencies
       run: |
